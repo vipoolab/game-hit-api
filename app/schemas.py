@@ -1,0 +1,122 @@
+"""Pydantic response models — used by FastAPI to render JSON schemas
+and example payloads in the auto-generated /docs page.
+"""
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class GameItem(BaseModel):
+    rank: int = Field(..., description="อันดับของเกมภายใน provider นี้ (1 = ฮิตสุด)")
+    game_name: str = Field(..., description="ชื่อเกม (ตามที่ provider ตั้งมา)")
+    unique_players: int = Field(..., description="จำนวนคนเล่นไม่ซ้ำใน 30 วัน")
+    spins: int = Field(..., description="จำนวนครั้งที่เล่น (spin/bet) ใน 30 วัน")
+    bet_volume: float = Field(..., description="ยอดเงินวางเดิมพันรวม (บาท)")
+
+
+class ProviderItem(BaseModel):
+    rank: int = Field(..., description="อันดับ provider (1 = ฮิตสุด)")
+    provider_code: str = Field(..., description="รหัส provider เช่น PGS, SAG")
+    provider_fullname: str = Field(
+        ...,
+        description="ชื่อเต็มของ provider เช่น 'Pgsoft Seamless', 'SA Gaming' "
+                    "— ถ้า warehouse ไม่มีชื่อเต็ม จะ fallback เป็นรหัส",
+    )
+    unique_players: int = Field(..., description="จำนวนคนเล่นไม่ซ้ำของ provider นี้ใน 30 วัน")
+    spins: int = Field(..., description="จำนวนครั้งเล่นรวมของ provider นี้")
+    bet_volume: float = Field(..., description="ยอดเดิมพันรวมของ provider นี้ (บาท)")
+    game_count: int = Field(..., description="จำนวนเกมใน list นี้")
+    games: list[GameItem] = Field(..., description="รายชื่อเกมเรียงตาม unique players (ฮิตสุดมาก่อน)")
+
+
+class HitsResponse(BaseModel):
+    refreshed_at: str = Field(..., description="เวลาที่ refresh cache ล่าสุด (UTC ISO-8601)")
+    window_days: int = Field(..., description="ใช้ข้อมูลย้อนหลังกี่วัน")
+    metric: str = Field(..., description="metric ที่ใช้จัดอันดับ (เช่น unique_players)")
+    scope: str = Field(..., description="ขอบเขตข้อมูล (global / company / brand)")
+    provider_count: int = Field(..., description="จำนวน provider ใน response")
+    providers: list[ProviderItem] = Field(..., description="รายชื่อ provider เรียงตามอันดับ")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "refreshed_at": "2026-05-26T08:22:05.486442+00:00",
+                "window_days": 30,
+                "metric": "unique_players",
+                "scope": "global",
+                "provider_count": 2,
+                "providers": [
+                    {
+                        "rank": 1,
+                        "provider_code": "PGS",
+                        "provider_fullname": "Pgsoft Seamless",
+                        "unique_players": 8152810,
+                        "spins": 523133866,
+                        "bet_volume": 137300213959.92,
+                        "game_count": 3,
+                        "games": [
+                            {
+                                "rank": 1,
+                                "game_name": "treasures of aztec",
+                                "unique_players": 4043719,
+                                "spins": 93991447,
+                                "bet_volume": 24556407179.02,
+                            },
+                            {
+                                "rank": 2,
+                                "game_name": "mahjong ways 2",
+                                "unique_players": 2467466,
+                                "spins": 46186542,
+                                "bet_volume": 11019904437.18,
+                            },
+                            {
+                                "rank": 3,
+                                "game_name": "lucky neko",
+                                "unique_players": 2146311,
+                                "spins": 38112733,
+                                "bet_volume": 9201230111.55,
+                            },
+                        ],
+                    },
+                    {
+                        "rank": 19,
+                        "provider_code": "SAG",
+                        "provider_fullname": "SA Gaming",
+                        "unique_players": 267226,
+                        "spins": 15881646,
+                        "bet_volume": 12189643034.75,
+                        "game_count": 2,
+                        "games": [
+                            {
+                                "rank": 1,
+                                "game_name": "baccarat",
+                                "unique_players": 250307,
+                                "spins": 14315929,
+                                "bet_volume": 11195778275.6,
+                            },
+                            {
+                                "rank": 2,
+                                "game_name": "thai hilo",
+                                "unique_players": 13505,
+                                "spins": 229316,
+                                "bet_volume": 80715814.0,
+                            },
+                        ],
+                    },
+                ],
+            }
+        }
+    }
+
+
+class HealthResponse(BaseModel):
+    status: str = Field(..., description="ok | warming_up")
+    refreshed_at: str | None = Field(None, description="เวลาที่ refresh ล่าสุด (null ถ้ายังไม่เคย)")
+    provider_count: int | None = None
+    window_days: int | None = None
+
+
+class RefreshResponse(BaseModel):
+    status: str = Field(..., description="refreshed")
+    refreshed_at: str
+    provider_count: int
