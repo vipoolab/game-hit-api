@@ -44,3 +44,6 @@ data/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Claude Code agent artifacts (local-only)
+.claude/
