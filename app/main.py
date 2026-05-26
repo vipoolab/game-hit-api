@@ -8,7 +8,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .cache import HitsCache
@@ -16,6 +16,7 @@ from .config import load_config
 from .refresh import refresh_once
 from .scheduler import start_scheduler
 from .schemas import HealthResponse, HitsResponse, RefreshResponse
+from .security import require_access_code
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +41,10 @@ async def lifespan(app: FastAPI):
         )
     if not cfg.refresh_token:
         log.warning("REFRESH_TOKEN not set — POST /refresh is open. OK for local dev.")
+    if not cfg.access_code:
+        log.warning("ACCESS_CODE not set — /games/hits is open to anyone. OK for local dev.")
+    else:
+        log.info("ACCESS_CODE gate enabled on /games/hits (%d chars)", len(cfg.access_code))
 
     cache = HitsCache(cfg.cache_file)
     cache.load_from_disk()
@@ -202,8 +207,10 @@ def ready(response: Response) -> dict[str, Any]:
     tags=["hits"],
     response_model=HitsResponse,
     summary="รายชื่อ provider เรียงตามอันดับ + เกมยอดฮิตในแต่ละ provider",
+    dependencies=[Depends(require_access_code)],
     responses={
-        503: {"description": "Cache ยังไม่พร้อม (กำลังโหลดข้อมูลครั้งแรก) — ลองใหม่อีกครั้งใน 30-60 วินาที"}
+        401: {"description": "ไม่ได้ส่งรหัส / รหัสผิด — ใส่ header `X-Access-Code` หรือ `?code=`"},
+        503: {"description": "Cache ยังไม่พร้อม (กำลังโหลดข้อมูลครั้งแรก) — ลองใหม่อีกครั้งใน 30-60 วินาที"},
     },
 )
 def get_hits(

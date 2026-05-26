@@ -55,6 +55,7 @@ class AppConfig:
     games_per_provider: int
     cache_file: Path
     refresh_token: str | None
+    access_code: str | None
     trino: TrinoConfig
 
 
@@ -85,6 +86,7 @@ def load_config() -> AppConfig:
         games_per_provider=_env_int("HIT_GAMES_PER_PROVIDER", 50),
         cache_file=cache_path,
         refresh_token=_env("REFRESH_TOKEN"),
+        access_code=_env("ACCESS_CODE"),
         trino=TrinoConfig(
             host=host,
             port=_env_int("TRINO_PORT", 443),

@@ -30,7 +30,7 @@ python run.py
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | สถานะ cache + เวลาที่ refresh ล่าสุด |
-| GET | `/games/hits` | รายชื่อ provider เรียงตาม unique players พร้อมเกมยอดฮิตในแต่ละ provider |
+| GET | `/games/hits` | รายชื่อ provider เรียงตาม unique players พร้อมเกมยอดฮิตในแต่ละ provider (ต้องส่ง `X-Access-Code` หรือ `?code=` ถ้าตั้ง `ACCESS_CODE` ไว้) |
 | POST | `/refresh` | สั่ง refresh ทันที (header `X-Refresh-Token` บังคับใน production — ดู [SECURITY.md](SECURITY.md)) |
 | GET | `/docs` | Swagger UI อัตโนมัติของ FastAPI (เทสยิงตรง browser ได้) |
 | GET | `/redoc` | ReDoc UI ทางเลือก (อ่านง่ายกว่า แต่เทสไม่ได้) |
@@ -85,6 +85,7 @@ python run.py
 - `HIT_REFRESH_CRON_HOUR=3`, `HIT_REFRESH_CRON_MINUTE=5` — refresh วันละครั้งเวลา 03:05 UTC (เปลี่ยนเป็น `*` ถ้าอยากทุกชั่วโมง หรือ `*/6` ทุก 6 ชั่วโมง)
 - `HIT_GAMES_PER_PROVIDER=50` — เก็บเกมต่อ provider ไว้ใน cache สูงสุดกี่ตัว (0 = ทั้งหมด)
 - `HIT_CACHE_FILE=data/hits.json` — ที่เก็บ cache บนดิสก์ (โหลดต่อเนื่องเวลา restart)
+- `ACCESS_CODE=` — รหัสเข้าใช้งาน `/games/hits` (เช่น `9998`) — ส่งผ่าน header `X-Access-Code` หรือ query `?code=` ถ้าไม่ตั้งจะเปิดให้ทุกคนเรียกได้
 - `REFRESH_TOKEN=` — shared secret ป้องกัน `/refresh` (ดูใน [SECURITY.md](SECURITY.md))
 - `CORS_ORIGINS=*` — รายชื่อ origin คั่นด้วย comma เช่น `https://app.example.com,https://staging.example.com` (default `*` ใช้ได้กับข้อมูล aggregate read-only)
 
