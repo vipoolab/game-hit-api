@@ -1,12 +1,14 @@
 """FastAPI app — serves cached hit-games ranking and exposes a manual refresh."""
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 import threading
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query, Response
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from .cache import HitsCache
@@ -25,6 +27,20 @@ log = logging.getLogger("gamehit")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = load_config()
+
+    # Production safety: REFRESH_TOKEN must be set when not running locally.
+    # We detect "production" via the common cloud env vars set by Railway/Heroku.
+    is_cloud = any(os.environ.get(k) for k in ("RAILWAY_ENVIRONMENT", "DYNO", "FLY_APP_NAME"))
+    if is_cloud and not cfg.refresh_token:
+        log.warning(
+            "SECURITY: REFRESH_TOKEN is not set while running in a cloud env "
+            "(RAILWAY_ENVIRONMENT/DYNO detected). POST /refresh is publicly "
+            "triggerable — anyone can run an expensive Trino query. "
+            "Set REFRESH_TOKEN in the Variables tab."
+        )
+    if not cfg.refresh_token:
+        log.warning("REFRESH_TOKEN not set — POST /refresh is open. OK for local dev.")
+
     cache = HitsCache(cfg.cache_file)
     cache.load_from_disk()
 
@@ -35,12 +51,16 @@ async def lifespan(app: FastAPI):
             try:
                 refresh_once(cfg, cache)
             except Exception:
-                log.exception("Initial refresh failed — API will serve 503 until next run")
+                # Log type only, not full stack — avoids leaking SQL/host
+                # in production logs (the full trace is still in DEBUG level).
+                log.error("Initial refresh failed — API will serve 503 until next run", exc_info=False)
+                log.debug("Initial refresh full traceback:", exc_info=True)
         threading.Thread(target=_initial_refresh, daemon=True).start()
 
     app.state.cfg = cfg
     app.state.cache = cache
     app.state.scheduler = scheduler
+    app.state.refresh_in_progress = threading.Lock()
 
     try:
         yield
@@ -50,7 +70,7 @@ async def lifespan(app: FastAPI):
 
 API_DESCRIPTION = """
 API จัดอันดับ **เกมฮิต** จากข้อมูล v2 casino game stream ย้อนหลัง 30 วัน
-รวมทุก operator (global) อัพเดตอัตโนมัติทุก 1 ชั่วโมง
+รวมทุก operator (global) อัพเดตอัตโนมัติวันละครั้ง
 
 ## วิธีใช้
 
@@ -80,12 +100,19 @@ app = FastAPI(
     ],
 )
 
+# CORS: GET endpoints (read-only aggregated data) are safe to expose globally.
+# /refresh is protected by REFRESH_TOKEN — even with allow_origins=* a cross-site
+# attacker would still need the token, which is in a custom header that requires
+# CORS preflight. Override via CORS_ORIGINS env to lock down further.
+_cors_origins_env = os.environ.get("CORS_ORIGINS", "*").strip()
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] or ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-Refresh-Token"],
     expose_headers=["X-Refreshed-At"],
+    max_age=3600,
 )
 
 
@@ -189,24 +216,58 @@ def get_hits(
     tags=["ops"],
     response_model=RefreshResponse,
     summary="สั่ง refresh ข้อมูลทันที (ใช้เวลา ~40 วินาที)",
-    responses={401: {"description": "Invalid refresh token (เมื่อตั้ง REFRESH_TOKEN ไว้)"}},
+    responses={
+        401: {"description": "Invalid refresh token"},
+        409: {"description": "Refresh already in progress"},
+        503: {"description": "Refresh disabled (REFRESH_TOKEN not configured in cloud env)"},
+    },
 )
 def manual_refresh(
+    request: Request,
     x_refresh_token: str | None = Header(
         default=None,
         alias="X-Refresh-Token",
-        description="ใส่ token ตามที่ตั้งใน env `REFRESH_TOKEN` (ถ้าตั้ง — ไม่ตั้งก็เปิดใช้ฟรี)",
+        description="ใส่ token ตามที่ตั้งใน env `REFRESH_TOKEN` — บังคับใน production",
     ),
 ):
     """รัน refresh ตอนนี้เลย ไม่รอตาราง cron.
 
     ใช้เวลา ~40 วินาที (2 queries) — response จะกลับเมื่อ cache update เสร็จ.
+
+    **Security**:
+    - ใน cloud env (Railway/Heroku/Fly) ต้องตั้ง `REFRESH_TOKEN` ไม่งั้น endpoint
+      จะ disable เพื่อกัน abuse — query 1 ครั้ง = Trino คิวพร้อมเงิน
+    - token comparison ใช้ constant-time เพื่อกัน timing attack
+    - มี lock กัน concurrent refresh ซ้อน — request ที่ 2 จะได้ 409
     """
     cfg = app.state.cfg
+
+    is_cloud = any(os.environ.get(k) for k in ("RAILWAY_ENVIRONMENT", "DYNO", "FLY_APP_NAME"))
+    if is_cloud and not cfg.refresh_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Refresh endpoint disabled: REFRESH_TOKEN must be configured "
+                   "when running in a cloud environment",
+        )
+
     if cfg.refresh_token:
-        if x_refresh_token != cfg.refresh_token:
+        if not x_refresh_token or not hmac.compare_digest(
+            x_refresh_token.encode("utf-8"),
+            cfg.refresh_token.encode("utf-8"),
+        ):
             raise HTTPException(status_code=401, detail="Invalid refresh token")
-    payload = refresh_once(cfg, _cache(app))
+
+    lock: threading.Lock = request.app.state.refresh_in_progress
+    if not lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Refresh already in progress")
+    try:
+        payload = refresh_once(cfg, _cache(app))
+    except Exception:
+        log.error("Manual refresh failed", exc_info=False)
+        log.debug("Manual refresh full traceback:", exc_info=True)
+        raise HTTPException(status_code=502, detail="Refresh failed — see server logs")
+    finally:
+        lock.release()
     return {
         "status": "refreshed",
         "refreshed_at": payload["refreshed_at"],

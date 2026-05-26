@@ -80,7 +80,7 @@ def load_config() -> AppConfig:
         api_host=_env("API_HOST", "0.0.0.0"),
         api_port=port,
         window_days=_env_int("HIT_WINDOW_DAYS", 30),
-        cron_hour=_env("HIT_REFRESH_CRON_HOUR", "*"),
+        cron_hour=_env("HIT_REFRESH_CRON_HOUR", "3"),
         cron_minute=_env("HIT_REFRESH_CRON_MINUTE", "5"),
         games_per_provider=_env_int("HIT_GAMES_PER_PROVIDER", 50),
         cache_file=cache_path,

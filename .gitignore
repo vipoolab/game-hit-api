@@ -17,8 +17,18 @@ env/
 # Secrets — never commit credentials
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
 *.pem
+*.key
+*.crt
+*.p12
+secrets/
+.secrets/
+credentials.json
+service-account*.json
+auth.json
+config.local.*
 
 # Runtime data
 data/

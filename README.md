@@ -2,7 +2,7 @@
 
 API ภาษา Python (FastAPI) ที่จัดอันดับ "เกมฮิต" จาก v2 casino game stream
 บน Trino โดยรวมยอดทุก operator (global) ใช้ข้อมูล 30 วันล่าสุด
-และอัพเดตอัตโนมัติทุก 1 ชั่วโมง
+และอัพเดตอัตโนมัติวันละครั้ง (03:05 UTC = 10:05 ตามเวลาไทย)
 
 จัดอันดับด้วย **unique players** (จำนวนคนเล่นไม่ซ้ำ) ทั้งระดับ provider
 และระดับเกมภายในแต่ละ provider พร้อมส่งคืน `provider_fullname` ที่อ่านง่าย
@@ -31,7 +31,7 @@ python run.py
 |---|---|---|
 | GET | `/health` | สถานะ cache + เวลาที่ refresh ล่าสุด |
 | GET | `/games/hits` | รายชื่อ provider เรียงตาม unique players พร้อมเกมยอดฮิตในแต่ละ provider |
-| POST | `/refresh` | สั่ง refresh ทันที (ใส่ header `X-Refresh-Token` ถ้าตั้ง `REFRESH_TOKEN` ไว้) |
+| POST | `/refresh` | สั่ง refresh ทันที (header `X-Refresh-Token` บังคับใน production — ดู [SECURITY.md](SECURITY.md)) |
 | GET | `/docs` | Swagger UI อัตโนมัติของ FastAPI (เทสยิงตรง browser ได้) |
 | GET | `/redoc` | ReDoc UI ทางเลือก (อ่านง่ายกว่า แต่เทสไม่ได้) |
 | GET | `/openapi.json` | OpenAPI 3 spec — import เข้า Postman/Insomnia ได้ |
@@ -82,16 +82,17 @@ python run.py
 ทุกค่ามี default ที่ใช้งานได้ ยกเว้น `TRINO_HOST` / `TRINO_USER` ที่ต้องตั้งเอง:
 
 - `HIT_WINDOW_DAYS=30` — กี่วันย้อนหลัง (default หนึ่งเดือน)
-- `HIT_REFRESH_CRON_HOUR=*`, `HIT_REFRESH_CRON_MINUTE=5` — refresh ทุกชั่วโมงตอนนาทีที่ 5
+- `HIT_REFRESH_CRON_HOUR=3`, `HIT_REFRESH_CRON_MINUTE=5` — refresh วันละครั้งเวลา 03:05 UTC (เปลี่ยนเป็น `*` ถ้าอยากทุกชั่วโมง หรือ `*/6` ทุก 6 ชั่วโมง)
 - `HIT_GAMES_PER_PROVIDER=50` — เก็บเกมต่อ provider ไว้ใน cache สูงสุดกี่ตัว (0 = ทั้งหมด)
 - `HIT_CACHE_FILE=data/hits.json` — ที่เก็บ cache บนดิสก์ (โหลดต่อเนื่องเวลา restart)
-- `REFRESH_TOKEN=` — ถ้าตั้งจะต้องใส่ header `X-Refresh-Token` ตอน POST /refresh
+- `REFRESH_TOKEN=` — shared secret ป้องกัน `/refresh` (ดูใน [SECURITY.md](SECURITY.md))
+- `CORS_ORIGINS=*` — รายชื่อ origin คั่นด้วย comma เช่น `https://app.example.com,https://staging.example.com` (default `*` ใช้ได้กับข้อมูล aggregate read-only)
 
 ## How it works
 
 ```
 ┌──────────────┐   refresh every     ┌────────────┐
-│ APScheduler  ├───── 1 hour ───────▶│  refresh   │
+│ APScheduler  ├──── 1 day (UTC) ───▶│  refresh   │
 │ (in-process) │                     │  function  │
 └──────────────┘                     └─────┬──────┘
                                            │ 2 queries (~40s)
@@ -143,15 +144,17 @@ auto-detect Python project, HTTPS public URL ฟรี
 
 3. **ตั้ง Environment Variables** ใน Railway dashboard → Variables tab
    ```
-   TRINO_HOST=trino.w-aptd5zyph.dev.sparq-qd.com
+   TRINO_HOST=<your-trino-host>            # ห้าม commit ค่าจริง
    TRINO_PORT=443
-   TRINO_USER=tmt-team
-   TRINO_PASSWORD=<your-password>
+   TRINO_USER=<your-trino-user>
+   TRINO_PASSWORD=<your-trino-password>
    TRINO_CATALOG=delta
    TRINO_HTTP_SCHEME=https
-   REFRESH_TOKEN=<random-string>     # optional แต่แนะนำ
+   REFRESH_TOKEN=<random-string-32-chars>  # บังคับตั้งสำหรับ production
    ```
    > 💡 `PORT` Railway ตั้งให้อัตโนมัติ ไม่ต้องเซ็ต
+   > 🔐 ค่าใน Variables tab ถูก encrypt at-rest — ห้ามใส่ในไฟล์ commit เด็ดขาด
+   > 🎲 generate token: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 
 4. **Generate Public Domain**: Settings → Networking → Generate Domain
    ได้ URL แบบ `https://gamehit-api-production.up.railway.app`
