@@ -221,15 +221,17 @@ auto-detect Python project, HTTPS public URL ฟรี
 
 หลัง deploy เปิด `https://<your-url>/docs` แล้ว:
 
-1. **กดปุ่ม "Authorize" ที่มุมขวาบน** (ขึ้นเพราะมี `ACCESS_CODE` ตั้งใน env)
-2. ใส่รหัสที่ admin ให้มา ในช่อง `APIKeyHeader` หรือ `APIKeyQuery` (อย่างใดอย่างหนึ่งก็พอ)
-3. กด **Authorize** → **Close**
-4. คลิก `GET /games/hits` → **Try it out** → ใส่ query params → **Execute**
-5. Response เด้งขึ้นมาให้เลย พร้อม curl command สำเร็จรูปก๊อปไปใช้ต่อ
+1. คลิก `GET /games/hits`
+2. **Try it out**
+3. ใส่ค่าใน params:
+   - `code` — รหัสที่ admin ให้มา (จำเป็น)
+   - `provider_limit`, `games_per_provider`, `provider` — optional
+4. **Execute** → response เด้งขึ้นมาให้เลย พร้อม curl command สำเร็จรูปก๊อปไปใช้ต่อ
 
 > 💡 `/docs` ของ FastAPI เป็น Swagger UI สำเร็จรูป — testers ไม่ต้อง install
 > อะไรก็เทสยิงได้ครบทุก endpoint
-> 🔑 ใส่รหัสครั้งเดียวพอ Swagger จะ remember ตลอด session
+> 🔑 รหัสจะอยู่ใน URL ของ request (`?code=...`) — เห็นใน browser history
+> ถ้ากังวลใช้ header `X-Access-Code` แทน (Swagger ให้เลือกได้ทั้งสองช่อง)
 
 ## Notes
 
