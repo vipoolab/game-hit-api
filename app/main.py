@@ -152,9 +152,38 @@ def _filtered_payload(
     "/health",
     tags=["ops"],
     response_model=HealthResponse,
-    summary="เช็คสถานะ API + เวลาที่ refresh ล่าสุด",
+    summary="Liveness check — process ยังอยู่มั้ย (always 200 ถ้า server ยังรันอยู่)",
 )
-def health(response: Response) -> dict[str, Any]:
+def health() -> dict[str, Any]:
+    """Liveness probe สำหรับ Railway/K8s/load balancer.
+
+    คืน 200 ถ้า process ยังตอบสนอง — ไม่ผูกกับ cache เพราะ refresh ตัวแรก
+    ใช้เวลา ~40s. ถ้าอยากเช็คว่าข้อมูลพร้อมหรือยัง ดู `/ready`
+    """
+    payload = _cache(app).get()
+    if payload is None:
+        return {"status": "warming_up", "refreshed_at": None,
+                "provider_count": None, "window_days": None}
+    return {
+        "status": "ok",
+        "refreshed_at": payload["refreshed_at"],
+        "provider_count": payload["provider_count"],
+        "window_days": payload["window_days"],
+    }
+
+
+@app.get(
+    "/ready",
+    tags=["ops"],
+    response_model=HealthResponse,
+    summary="Readiness check — cache โหลดเสร็จหรือยัง (503 = ยังไม่พร้อม)",
+)
+def ready(response: Response) -> dict[str, Any]:
+    """Readiness probe — บอกว่า API พร้อมตอบ `/games/hits` แล้วหรือยัง.
+
+    - 200 = cache มีแล้ว, ยิงได้
+    - 503 = ยังโหลดข้อมูลครั้งแรกอยู่ (รอ ~40 วินาที) หรือ Trino เรียกไม่ติด
+    """
     payload = _cache(app).get()
     if payload is None:
         response.status_code = 503
