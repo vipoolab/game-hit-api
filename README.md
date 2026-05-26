@@ -32,7 +32,9 @@ python run.py
 | GET | `/health` | สถานะ cache + เวลาที่ refresh ล่าสุด |
 | GET | `/games/hits` | รายชื่อ provider เรียงตาม unique players พร้อมเกมยอดฮิตในแต่ละ provider |
 | POST | `/refresh` | สั่ง refresh ทันที (ใส่ header `X-Refresh-Token` ถ้าตั้ง `REFRESH_TOKEN` ไว้) |
-| GET | `/docs` | Swagger UI อัตโนมัติของ FastAPI |
+| GET | `/docs` | Swagger UI อัตโนมัติของ FastAPI (เทสยิงตรง browser ได้) |
+| GET | `/redoc` | ReDoc UI ทางเลือก (อ่านง่ายกว่า แต่เทสไม่ได้) |
+| GET | `/openapi.json` | OpenAPI 3 spec — import เข้า Postman/Insomnia ได้ |
 
 ### Query params ของ `/games/hits`
 
@@ -118,12 +120,80 @@ python run.py
   เวลา restart โหลดต่อจากไฟล์ได้ทันที (ไม่ต้องรอ refresh แรก)
 - API ตอบจาก memory ทันที (1-2 ms) — Trino โหลดไม่ถูกชนทุก request
 
+## Deploy บน Railway
+
+Railway เหมาะที่สุด: free credit $5/เดือน, persistent process รองรับ scheduler,
+auto-detect Python project, HTTPS public URL ฟรี
+
+### ขั้นตอน (ครั้งแรก ~10 นาที)
+
+1. **Push code ขึ้น GitHub** (ของจริง — Railway connect GitHub ง่ายสุด)
+   ```powershell
+   # สร้าง repo ใน GitHub ผ่าน UI หรือ:
+   gh repo create gamehit-api --private --source=. --push
+   # หรือ manual:
+   git remote add origin https://github.com/<your-user>/gamehit-api.git
+   git push -u origin main
+   ```
+
+2. **Create Railway project**
+   - ไปที่ https://railway.app → New Project → Deploy from GitHub repo
+   - เลือก repo `gamehit-api`
+   - Railway detect Python อัตโนมัติ (ใช้ Nixpacks อ่าน `requirements.txt` + `Procfile`)
+
+3. **ตั้ง Environment Variables** ใน Railway dashboard → Variables tab
+   ```
+   TRINO_HOST=trino.w-aptd5zyph.dev.sparq-qd.com
+   TRINO_PORT=443
+   TRINO_USER=tmt-team
+   TRINO_PASSWORD=<your-password>
+   TRINO_CATALOG=delta
+   TRINO_HTTP_SCHEME=https
+   REFRESH_TOKEN=<random-string>     # optional แต่แนะนำ
+   ```
+   > 💡 `PORT` Railway ตั้งให้อัตโนมัติ ไม่ต้องเซ็ต
+
+4. **Generate Public Domain**: Settings → Networking → Generate Domain
+   ได้ URL แบบ `https://gamehit-api-production.up.railway.app`
+
+5. **เทสยิงดู** (deploy แรกใช้เวลา ~2 นาที + warmup 40 วิ)
+   ```bash
+   curl https://<your-url>.up.railway.app/health
+   # เปิด /docs ในเบราว์เซอร์
+   ```
+
+### Healthcheck
+
+`railway.json` ตั้งให้ Railway ดู `/health` ภายใน 120 วินาที — initial refresh
+ใช้เวลา ~40 วินาที จึงผ่านสบาย ถ้า Trino ช้ามาก deploy จะ fail
+(Railway จะ retry 5 ครั้งก่อนเลิกล้ม)
+
+### ข้อควรระวัง
+
+- **Single-instance only**: scheduler เป็น in-process — ถ้าเอาไป scale หลาย replica
+  จะมีหลาย scheduler ยิง Trino พร้อมกัน (เปลือง). ถ้าจะ scale ต้องย้าย scheduler
+  ออกไปเป็น Railway Cron job แยก
+- **Ephemeral disk**: ไฟล์ `data/hits.json` จะหายเวลา redeploy — initial refresh
+  จะเด้งใหม่อัตโนมัติ (~40 วินาที). ถ้าจะ persist จริง ต้องเพิ่ม Railway Volume
+- **Cost**: idle ปกติ ~$0.01-0.02/ชั่วโมง = ~$5-15/เดือน (free credit คุ้ม)
+
+## ทดสอบ API ผ่าน Swagger UI
+
+หลัง deploy เปิด `https://<your-url>/docs` แล้ว:
+
+1. คลิก endpoint ที่อยากเทส (เช่น `GET /games/hits`)
+2. "Try it out" → ใส่ค่า query params → "Execute"
+3. Response เด้งขึ้นมาให้เลย พร้อม curl command สำเร็จรูปก๊อปไปใช้ต่อ
+
+> 💡 `/docs` ของ FastAPI เป็น Swagger UI สำเร็จรูป — testers ไม่ต้อง install
+> อะไรก็เทสยิงได้ครบทุก endpoint
+
 ## Notes
 
 - ใช้ตาราง `delta.default.v2_silver_precal_prod_stream` ตามที่ skill
   casino-trino แนะนำ — มี column `fullname_provider` ในตัวอยู่แล้ว
-  ไม่ต้อง join master เพิ่ม.
+  ไม่ต้อง join master เพิ่ม
 - `provider_fullname` ที่ตัว v2 stream เป็น `NULL` (มีอยู่บ้าง เช่น `1UP`, `AMG`)
-  จะ fallback ไปใช้รหัส `provider` แทน เพื่อกัน UI พัง.
+  จะ fallback ไปใช้รหัส `provider` แทน เพื่อกัน UI พัง
 - ขอบเขตเป็น **global** ทุก operator/prefix รวมกัน ถ้าจะตัดเฉพาะ prefix
-  ต้องไป join v8 cus ดูตัวอย่างใน `~/.claude/skills/casino-trino/references/JOIN_V8_V2.md`.
+  ต้องไป join v8 cus ดูตัวอย่างใน `~/.claude/skills/casino-trino/references/JOIN_V8_V2.md`
