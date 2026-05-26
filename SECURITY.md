@@ -3,14 +3,17 @@
 เอกสารนี้สรุปว่าอะไรปลอดภัย/ไม่ปลอดภัยที่จะ expose
 และวิธีตรวจสอบหลัง deploy
 
-## What is safe to expose publicly
+## Endpoint exposure model
 
-| Item | Why it's safe |
-|---|---|
-| `/games/hits` response | Aggregate counts ระดับ provider/game — ไม่มี username, IP, PII |
-| `/health` | แค่ timestamp + provider count — ไม่บอกอะไรเกี่ยวกับลูกค้า |
-| `/docs`, `/redoc`, `/openapi.json` | ข้อมูล schema ของ API — ไม่ leak credentials |
-| `provider_fullname`, `game_name` | ชื่อที่ vendor ตั้งเอง — ไม่ใช่ข้อมูลลูกค้า |
+| Endpoint | Auth required | Why this level |
+|---|---|---|
+| `/games/hits` | `ACCESS_CODE` | Aggregate data — ไม่มี PII แต่ก็ไม่ควรเปิดให้ทั่วโลก gate ด้วยรหัสกัน abuse + bot scraping |
+| `POST /refresh` | `REFRESH_TOKEN` | Trigger Trino query (~40s, มีค่าใช้จ่าย) — gate แน่นกว่าด้วย random token 32 ตัวอักษร |
+| `/health`, `/ready` | ฟรี | Railway healthcheck ต้องเรียกได้ — แค่ timestamp + counts ไม่มีอะไรอ่อนไหว |
+| `/docs`, `/redoc`, `/openapi.json` | ฟรี | Schema เปิดสาธารณะเพื่อให้ testers ใส่รหัสยิงได้สะดวก ไม่มี credential ในนี้ |
+
+> 💡 `/docs` เปิด **schema** ของ API ให้ดู — แต่ตัว data endpoint ยังต้องใช้
+> `ACCESS_CODE`. คนเห็น schema แต่ยิงข้อมูลไม่ได้ถ้าไม่มีรหัส
 
 ## What MUST stay in env (never commit)
 
@@ -18,6 +21,7 @@
 TRINO_HOST          ← hostname ของ data warehouse internal
 TRINO_USER          ← service account
 TRINO_PASSWORD      ← service account password
+ACCESS_CODE         ← รหัสเข้าใช้งาน /games/hits (เช่น 9998)
 REFRESH_TOKEN       ← shared secret สำหรับ POST /refresh
 ```
 
@@ -61,37 +65,60 @@ git check-ignore data/hits.json           # ต้องเจอ pattern
 - [ ] `TRINO_HOST`
 - [ ] `TRINO_USER`
 - [ ] `TRINO_PASSWORD`
+- [ ] `ACCESS_CODE` (สำคัญ! ถ้าไม่ตั้ง `/games/hits` จะเปิดให้ทุกคนเรียกได้)
 - [ ] `REFRESH_TOKEN` (สำคัญ! ถ้าไม่ตั้ง endpoint `/refresh` จะ disabled อัตโนมัติ)
 
-Generate token:
+Generate refresh token:
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
+
+ACCESS_CODE สามารถตั้งเป็นรหัสสั้นๆ ที่จำง่าย (เช่น `9998`) เพราะเป็น
+gate ขั้นแรก ไม่ใช่ secret ระดับ password — เปลี่ยนได้ตลอด
 
 ### 3. ทดสอบหลัง deploy
 
 ```bash
 URL=https://<your-app>.up.railway.app
+CODE=9998
+TOKEN=<refresh-token>
 
-# 1. health endpoint ใช้งานได้
-curl -s $URL/health
-# expect: {"status":"ok",...}
+# 1. /health รัน — Railway healthcheck ใช้
+curl -s -o /dev/null -w "%{http_code}\n" $URL/health
+# expect: 200
 
-# 2. /docs โหลด (Swagger UI)
+# 2. /ready บอกว่า cache โหลดเสร็จ
+curl -s -o /dev/null -w "%{http_code}\n" $URL/ready
+# expect: 200 (หลัง warmup ~40s)
+
+# 3. /docs โหลด (Swagger UI)
 curl -s -o /dev/null -w "%{http_code}\n" $URL/docs
 # expect: 200
 
-# 3. /refresh ถูกปฏิเสธโดยไม่มี token
+# 4. /games/hits ถูก gate ด้วย ACCESS_CODE
+curl -s -o /dev/null -w "%{http_code}\n" $URL/games/hits
+# expect: 401
+
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Access-Code: wrong" $URL/games/hits
+# expect: 401
+
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Access-Code: $CODE" $URL/games/hits
+# expect: 200
+
+curl -s -o /dev/null -w "%{http_code}\n" "$URL/games/hits?code=$CODE"
+# expect: 200
+
+# 5. /refresh ถูก gate ด้วย REFRESH_TOKEN (แยกชั้นจาก ACCESS_CODE)
 curl -s -o /dev/null -w "%{http_code}\n" -X POST $URL/refresh
 # expect: 401
 
-# 4. /refresh ถูกปฏิเสธด้วย token ผิด
 curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   -H "X-Refresh-Token: wrong" $URL/refresh
 # expect: 401
 
-# 5. response ไม่ leak hostname
-curl -s $URL/games/hits?provider_limit=1 | grep -c "sparq-qd\|trino\.\|aptd5"
+# 6. response ไม่ leak hostname จริง
+curl -s "$URL/games/hits?code=$CODE&provider_limit=1" \
+  | grep -c "sparq-qd\|trino\.\|aptd5"
 # expect: 0
 ```
 
@@ -113,7 +140,12 @@ curl -s $URL/games/hits?provider_limit=1 | grep -c "sparq-qd\|trino\.\|aptd5"
   bubbled exceptions
 - **Credential leak via logs** — trino library uses DEBUG level for auth
   headers, our log level is INFO
+- **Unauthorized data access** — `/games/hits` ต้องมี `ACCESS_CODE` ใน
+  header หรือ query (constant-time compare ใน `app/security.py`)
 - **Brute-force on REFRESH_TOKEN** — `hmac.compare_digest()` (constant-time)
+- **Brute-force on ACCESS_CODE** — เช่นกัน (constant-time) แต่ถ้าใช้รหัสสั้น
+  เช่น 4 หลัก ป้องกัน online brute force ไม่ได้ 100% — ใช้ Cloudflare
+  rate limit เสริมถ้ากังวล
 - **Refresh abuse (cost)** — token required in cloud env, lock prevents
   concurrent refresh
 - **SQL injection** — only int-cast user input touches SQL
@@ -133,7 +165,7 @@ curl -s $URL/games/hits?provider_limit=1 | grep -c "sparq-qd\|trino\.\|aptd5"
 
 ## ถ้าหลุดแล้ว
 
-ถ้า `TRINO_PASSWORD` หรือ `REFRESH_TOKEN` รั่ว:
+ถ้า `TRINO_PASSWORD`, `ACCESS_CODE`, หรือ `REFRESH_TOKEN` รั่ว:
 
 1. **เปลี่ยน password ทันที** — แจ้ง data engineering ให้ rotate service account
 2. **อัพเดต Railway Variables** — ใส่ค่าใหม่ → trigger redeploy

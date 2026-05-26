@@ -77,9 +77,20 @@ API_DESCRIPTION = """
 API จัดอันดับ **เกมฮิต** จากข้อมูล v2 casino game stream ย้อนหลัง 30 วัน
 รวมทุก operator (global) อัพเดตอัตโนมัติวันละครั้ง
 
+## 🔑 Authentication
+
+`GET /games/hits` ต้องส่ง **access code** มาด้วย ส่งได้ 2 ทาง:
+- HTTP header: `X-Access-Code: 9998`
+- Query parameter: `?code=9998`
+
+**ใน Swagger UI กดปุ่ม "Authorize" ที่มุมขวาบน** ใส่รหัสครั้งเดียว
+แล้ว Try-It-Out ทุก endpoint จะส่งรหัสไปให้อัตโนมัติ
+
+`POST /refresh` ต้องใช้ token แยกอีกตัว (`X-Refresh-Token` header)
+
 ## วิธีใช้
 
-1. เรียก `GET /games/hits` เพื่อดึงรายชื่อ provider เรียงตามอันดับ
+1. เรียก `GET /games/hits` พร้อม access code → ดึงรายชื่อ provider เรียงตามอันดับ
    พร้อมเกมยอดฮิตในแต่ละ provider
 2. ใช้ query param `?provider_limit=10` / `?games_per_provider=5` /
    `?provider=PGS` เพื่อจำกัด/กรองข้อมูล

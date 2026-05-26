@@ -23,24 +23,55 @@ python run.py
 ```
 
 ครั้งแรกที่รัน server จะ refresh cache ครั้งแรกใน background (~40 วินาที)
-ก่อนหน้านั้น `/games/hits` จะส่ง 503 และ `/health` ส่ง `status: warming_up`
+ระหว่างนั้น `/health` ตอบ 200 (process รันอยู่) แต่ `/ready` จะตอบ 503
+จนกว่า refresh จะเสร็จ — `/games/hits` ก็จะตอบ 503 ในช่วงนั้นเช่นกัน
 
 ## Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | สถานะ cache + เวลาที่ refresh ล่าสุด |
-| GET | `/games/hits` | รายชื่อ provider เรียงตาม unique players พร้อมเกมยอดฮิตในแต่ละ provider (ต้องส่ง `X-Access-Code` หรือ `?code=` ถ้าตั้ง `ACCESS_CODE` ไว้) |
-| POST | `/refresh` | สั่ง refresh ทันที (header `X-Refresh-Token` บังคับใน production — ดู [SECURITY.md](SECURITY.md)) |
-| GET | `/docs` | Swagger UI อัตโนมัติของ FastAPI (เทสยิงตรง browser ได้) |
-| GET | `/redoc` | ReDoc UI ทางเลือก (อ่านง่ายกว่า แต่เทสไม่ได้) |
-| GET | `/openapi.json` | OpenAPI 3 spec — import เข้า Postman/Insomnia ได้ |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | ฟรี | Liveness — process ยังรันมั้ย (200 เสมอ ถ้า server ตอบ) |
+| GET | `/ready` | ฟรี | Readiness — cache โหลดเสร็จหรือยัง (503 ตอน warmup) |
+| GET | `/games/hits` | **ต้องมี code** | รายชื่อ provider เรียงตาม unique players พร้อมเกมยอดฮิตในแต่ละ provider |
+| POST | `/refresh` | **ต้องมี token** | สั่ง refresh ทันที (ใช้ ~40 วินาที) |
+| GET | `/docs` | ฟรี | Swagger UI — เทสยิงตรง browser ได้ |
+| GET | `/redoc` | ฟรี | ReDoc UI ทางเลือก (อ่านง่ายกว่า แต่เทสไม่ได้) |
+| GET | `/openapi.json` | ฟรี | OpenAPI 3 spec — import เข้า Postman/Insomnia ได้ |
+
+### Authentication
+
+มี security 2 ชั้นแยกกัน:
+
+1. **`ACCESS_CODE`** — รหัสสำหรับ `/games/hits` (data endpoint). ส่งได้ 2 ทาง:
+   - HTTP header: `X-Access-Code: 9998`
+   - Query parameter: `?code=9998`
+2. **`REFRESH_TOKEN`** — secret สำหรับ `POST /refresh` (operation endpoint). ส่งผ่าน:
+   - HTTP header: `X-Refresh-Token: <token>`
+
+ทั้งสองตัวเป็น env var — local dev ไม่ตั้งก็เปิดให้ทุกคนใช้ + log warning
+production (Railway) บังคับให้ตั้ง ดู [SECURITY.md](SECURITY.md) สำหรับรายละเอียด
 
 ### Query params ของ `/games/hits`
 
 - `provider_limit=10` — ส่งเฉพาะ Top N provider
 - `games_per_provider=5` — เกมต่อ provider เอามาแค่ N ตัว
 - `provider=PGS` — กรองเฉพาะ provider เดียว (ใส่รหัสเช่น `PGS`, `SAG`)
+- `code=9998` — access code (ทางเลือกแทน header)
+
+### ตัวอย่าง curl
+
+```bash
+URL=https://<your-app>.up.railway.app
+
+# ใช้ header (recommended)
+curl -H "X-Access-Code: 9998" "$URL/games/hits?provider_limit=10"
+
+# หรือใช้ query param (เปิดในเบราว์เซอร์ได้)
+curl "$URL/games/hits?provider_limit=10&code=9998"
+
+# manual refresh (ต้องมี REFRESH_TOKEN)
+curl -X POST -H "X-Refresh-Token: <token>" $URL/refresh
+```
 
 ## Response shape
 
@@ -151,11 +182,13 @@ auto-detect Python project, HTTPS public URL ฟรี
    TRINO_PASSWORD=<your-trino-password>
    TRINO_CATALOG=delta
    TRINO_HTTP_SCHEME=https
+   ACCESS_CODE=9998                        # 4 หลัก หรือ string อะไรก็ได้
    REFRESH_TOKEN=<random-string-32-chars>  # บังคับตั้งสำหรับ production
    ```
    > 💡 `PORT` Railway ตั้งให้อัตโนมัติ ไม่ต้องเซ็ต
    > 🔐 ค่าใน Variables tab ถูก encrypt at-rest — ห้ามใส่ในไฟล์ commit เด็ดขาด
-   > 🎲 generate token: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+   > 🎲 generate refresh token: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+   > 🔑 ACCESS_CODE คือรหัสที่ testers ต้องส่งมาในทุก request ไป `/games/hits`
 
 4. **Generate Public Domain**: Settings → Networking → Generate Domain
    ได้ URL แบบ `https://gamehit-api-production.up.railway.app`
@@ -185,12 +218,15 @@ auto-detect Python project, HTTPS public URL ฟรี
 
 หลัง deploy เปิด `https://<your-url>/docs` แล้ว:
 
-1. คลิก endpoint ที่อยากเทส (เช่น `GET /games/hits`)
-2. "Try it out" → ใส่ค่า query params → "Execute"
-3. Response เด้งขึ้นมาให้เลย พร้อม curl command สำเร็จรูปก๊อปไปใช้ต่อ
+1. **กดปุ่ม "Authorize" ที่มุมขวาบน** (ขึ้นเพราะมี `ACCESS_CODE` ตั้งใน env)
+2. ใส่รหัส (`9998`) ในช่อง `APIKeyHeader` หรือ `APIKeyQuery` (อย่างใดอย่างหนึ่งก็พอ)
+3. กด **Authorize** → **Close**
+4. คลิก `GET /games/hits` → **Try it out** → ใส่ query params → **Execute**
+5. Response เด้งขึ้นมาให้เลย พร้อม curl command สำเร็จรูปก๊อปไปใช้ต่อ
 
 > 💡 `/docs` ของ FastAPI เป็น Swagger UI สำเร็จรูป — testers ไม่ต้อง install
 > อะไรก็เทสยิงได้ครบทุก endpoint
+> 🔑 ใส่รหัสครั้งเดียวพอ Swagger จะ remember ตลอด session
 
 ## Notes
 
