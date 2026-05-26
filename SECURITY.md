@@ -21,7 +21,7 @@
 TRINO_HOST          ← hostname ของ data warehouse internal
 TRINO_USER          ← service account
 TRINO_PASSWORD      ← service account password
-ACCESS_CODE         ← รหัสเข้าใช้งาน /games/hits (เช่น 9998)
+ACCESS_CODE         ← รหัสเข้าใช้งาน /games/hits
 REFRESH_TOKEN       ← shared secret สำหรับ POST /refresh
 ```
 
@@ -73,15 +73,21 @@ Generate refresh token:
 python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-ACCESS_CODE สามารถตั้งเป็นรหัสสั้นๆ ที่จำง่าย (เช่น `9998`) เพราะเป็น
-gate ขั้นแรก ไม่ใช่ secret ระดับ password — เปลี่ยนได้ตลอด
+ACCESS_CODE สามารถตั้งเป็นรหัสสั้นๆ ที่จำง่ายก็ได้ เพราะเป็น gate ขั้นแรก
+ไม่ใช่ secret ระดับ password — เปลี่ยนได้ตลอด
+
+**สำคัญ**: ค่าจริงเก็บใน Railway Variables เท่านั้น แชร์กับ testers ผ่าน
+ช่องทาง private (Slack DM, password manager) — ห้ามเขียนใน:
+- ไฟล์ใน repo (README, comments, examples)
+- API docs/description (เพราะ `/docs` เปิดสาธารณะ)
+- ข้อความสาธารณะ (commit messages, public issues)
 
 ### 3. ทดสอบหลัง deploy
 
 ```bash
 URL=https://<your-app>.up.railway.app
-CODE=9998
-TOKEN=<refresh-token>
+CODE=<access-code-จาก-railway-variables>
+TOKEN=<refresh-token-จาก-railway-variables>
 
 # 1. /health รัน — Railway healthcheck ใช้
 curl -s -o /dev/null -w "%{http_code}\n" $URL/health

@@ -43,34 +43,37 @@ python run.py
 มี security 2 ชั้นแยกกัน:
 
 1. **`ACCESS_CODE`** — รหัสสำหรับ `/games/hits` (data endpoint). ส่งได้ 2 ทาง:
-   - HTTP header: `X-Access-Code: 9998`
-   - Query parameter: `?code=9998`
+   - HTTP header: `X-Access-Code: <code>`
+   - Query parameter: `?code=<code>`
 2. **`REFRESH_TOKEN`** — secret สำหรับ `POST /refresh` (operation endpoint). ส่งผ่าน:
    - HTTP header: `X-Refresh-Token: <token>`
 
 ทั้งสองตัวเป็น env var — local dev ไม่ตั้งก็เปิดให้ทุกคนใช้ + log warning
-production (Railway) บังคับให้ตั้ง ดู [SECURITY.md](SECURITY.md) สำหรับรายละเอียด
+production (Railway) บังคับให้ตั้ง **ค่าจริงเก็บใน Railway Variables เท่านั้น
+ห้าม commit หรือเขียนใน docs สาธารณะ** ดู [SECURITY.md](SECURITY.md) สำหรับรายละเอียด
 
 ### Query params ของ `/games/hits`
 
 - `provider_limit=10` — ส่งเฉพาะ Top N provider
 - `games_per_provider=5` — เกมต่อ provider เอามาแค่ N ตัว
 - `provider=PGS` — กรองเฉพาะ provider เดียว (ใส่รหัสเช่น `PGS`, `SAG`)
-- `code=9998` — access code (ทางเลือกแทน header)
+- `code=<value>` — access code (ทางเลือกแทน header)
 
 ### ตัวอย่าง curl
 
 ```bash
 URL=https://<your-app>.up.railway.app
+CODE=<access-code-จาก-admin>
+TOKEN=<refresh-token-จาก-admin>
 
 # ใช้ header (recommended)
-curl -H "X-Access-Code: 9998" "$URL/games/hits?provider_limit=10"
+curl -H "X-Access-Code: $CODE" "$URL/games/hits?provider_limit=10"
 
 # หรือใช้ query param (เปิดในเบราว์เซอร์ได้)
-curl "$URL/games/hits?provider_limit=10&code=9998"
+curl "$URL/games/hits?provider_limit=10&code=$CODE"
 
 # manual refresh (ต้องมี REFRESH_TOKEN)
-curl -X POST -H "X-Refresh-Token: <token>" $URL/refresh
+curl -X POST -H "X-Refresh-Token: $TOKEN" $URL/refresh
 ```
 
 ## Response shape
@@ -116,7 +119,7 @@ curl -X POST -H "X-Refresh-Token: <token>" $URL/refresh
 - `HIT_REFRESH_CRON_HOUR=3`, `HIT_REFRESH_CRON_MINUTE=5` — refresh วันละครั้งเวลา 03:05 UTC (เปลี่ยนเป็น `*` ถ้าอยากทุกชั่วโมง หรือ `*/6` ทุก 6 ชั่วโมง)
 - `HIT_GAMES_PER_PROVIDER=50` — เก็บเกมต่อ provider ไว้ใน cache สูงสุดกี่ตัว (0 = ทั้งหมด)
 - `HIT_CACHE_FILE=data/hits.json` — ที่เก็บ cache บนดิสก์ (โหลดต่อเนื่องเวลา restart)
-- `ACCESS_CODE=` — รหัสเข้าใช้งาน `/games/hits` (เช่น `9998`) — ส่งผ่าน header `X-Access-Code` หรือ query `?code=` ถ้าไม่ตั้งจะเปิดให้ทุกคนเรียกได้
+- `ACCESS_CODE=` — รหัสเข้าใช้งาน `/games/hits` (ตั้งค่าจริงใน Railway Variables เท่านั้น) — ส่งผ่าน header `X-Access-Code` หรือ query `?code=` ถ้าไม่ตั้งจะเปิดให้ทุกคนเรียกได้
 - `REFRESH_TOKEN=` — shared secret ป้องกัน `/refresh` (ดูใน [SECURITY.md](SECURITY.md))
 - `CORS_ORIGINS=*` — รายชื่อ origin คั่นด้วย comma เช่น `https://app.example.com,https://staging.example.com` (default `*` ใช้ได้กับข้อมูล aggregate read-only)
 
@@ -182,7 +185,7 @@ auto-detect Python project, HTTPS public URL ฟรี
    TRINO_PASSWORD=<your-trino-password>
    TRINO_CATALOG=delta
    TRINO_HTTP_SCHEME=https
-   ACCESS_CODE=9998                        # 4 หลัก หรือ string อะไรก็ได้
+   ACCESS_CODE=<your-access-code>          # รหัสที่ tester ต้องส่งมา
    REFRESH_TOKEN=<random-string-32-chars>  # บังคับตั้งสำหรับ production
    ```
    > 💡 `PORT` Railway ตั้งให้อัตโนมัติ ไม่ต้องเซ็ต
@@ -219,7 +222,7 @@ auto-detect Python project, HTTPS public URL ฟรี
 หลัง deploy เปิด `https://<your-url>/docs` แล้ว:
 
 1. **กดปุ่ม "Authorize" ที่มุมขวาบน** (ขึ้นเพราะมี `ACCESS_CODE` ตั้งใน env)
-2. ใส่รหัส (`9998`) ในช่อง `APIKeyHeader` หรือ `APIKeyQuery` (อย่างใดอย่างหนึ่งก็พอ)
+2. ใส่รหัสที่ admin ให้มา ในช่อง `APIKeyHeader` หรือ `APIKeyQuery` (อย่างใดอย่างหนึ่งก็พอ)
 3. กด **Authorize** → **Close**
 4. คลิก `GET /games/hits` → **Try it out** → ใส่ query params → **Execute**
 5. Response เด้งขึ้นมาให้เลย พร้อม curl command สำเร็จรูปก๊อปไปใช้ต่อ
