@@ -108,12 +108,13 @@ Field reference:
 - `game_name` — ชื่อเกมสำหรับ display
 - `unique_players` — จำนวนคนเล่นไม่ซ้ำใน 30 วัน (= metric ของอันดับ)
 
-หมายเหตุ:
+หมายเหตุ — การ map ด้วย `game_id`:
 - **Slot games** (PGS, PMTS, JL, ...): `game_id` map 1:1 กับ `game_name` — ใช้ map ได้ตรง
-- **Sport/Lottery** (Single Sport, Mix Parlay Step, AMBLOTTO): `game_id` เป็น
-  session ID ของแต่ละ match/round จะเห็นชื่อเดียวซ้ำหลาย row (เช่น
-  "football" มี ~7000 row ใน 30 วัน — แต่ละ row คือ 1 match) ถ้าไม่ต้อง
-  สนใจ sport ให้ filter ด้วย `?provider=PGS` หรือ skip provider เหล่านี้บน client
+- **Sport/Lottery** (Single Sport, Mix Parlay Step, AMBLOTTO): warehouse ใช้
+  game_id ต่อ session (แต่ละ match/งวด) เรา **roll up รวมเป็น 1 row ต่อชื่อ**
+  แล้วตั้ง `game_id: null` — `unique_players` นับรวมทุก session ของเกมนั้น
+  (เช่น "football" 1 row = ผู้เล่นรวมทุกแมตช์ใน 30 วัน). ถ้า `game_id` เป็น
+  null แปลว่าเป็นเกม session-based ให้ map ด้วย `(provider_code, game_name)` แทน
 
 Cache เก็บ **ทุกเกม** ที่ provider มี (ไม่มี cap) — request ขอกี่เกมต่อ
 provider ก็ได้ผ่าน `?games_per_provider=N` (เช่น PMTS มี 642 เกม)

@@ -27,18 +27,22 @@ def provider_rollup_sql(window_days: int) -> str:
 
 
 def game_rollup_sql(window_days: int) -> str:
-    """Unique players per (provider, game_id, game_name) over the last N days.
+    """Unique players per (provider, game_name) over the last N days.
 
-    Grouped by game_id so each row identifies one unique game from the warehouse.
-    Most slot games are 1:1 with game_id (PGS 'treasures of aztec' →
-    60531c5534d88c344ce9acbd). Sport/lottery products use game_id per session,
-    so the same name (e.g. 'football') will appear in many rows — each row is
-    a distinct match. Consumers can dedupe by name if needed.
+    Grouped by NAME (one row per game) so sport/lottery products don't explode
+    into thousands of per-session rows. The game_id is resolved per name:
+
+    - Slot games map 1:1 with a game_id → return that id (e.g. PGS
+      'treasures of aztec' → 60531c5534d88c344ce9acbd).
+    - Sport/lottery (e.g. 'football') use a fresh game_id per match/round, so
+      one name has many ids → we return game_id = NULL to signal "no single
+      stable id; this is a session-based product". unique_players still counts
+      distinct players across all sessions of that name.
     """
     return f"""
         SELECT
           provider,
-          game_id,
+          CASE WHEN COUNT(DISTINCT game_id) = 1 THEN MAX(game_id) ELSE NULL END AS game_id,
           game_name,
           COUNT(DISTINCT username) AS unique_players
         FROM delta.default.v2_silver_precal_prod_stream
@@ -46,5 +50,5 @@ def game_rollup_sql(window_days: int) -> str:
                         AND CAST(CURRENT_DATE AS VARCHAR)
           AND game_name IS NOT NULL
           AND TRIM(game_name) <> ''
-        GROUP BY provider, game_id, game_name
+        GROUP BY provider, game_name
     """

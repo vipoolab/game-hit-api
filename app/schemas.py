@@ -10,9 +10,10 @@ class GameItem(BaseModel):
     rank: int = Field(..., description="อันดับของเกมภายใน provider นี้ (1 = ฮิตสุด)")
     game_id: str | None = Field(
         None,
-        description="รหัสเกมจาก warehouse (24-hex ObjectId) — slot games map 1:1 "
-                    "กับชื่อเกม สำหรับ sport/lottery game_id จะเป็นต่อ session "
-                    "(ชื่อเดียวจะมีหลาย game_id)",
+        description="รหัสเกมจาก warehouse (24-hex ObjectId). Slot games map 1:1 "
+                    "กับชื่อเกมจึงมี id เสมอ. Sport/lottery (เช่น football, หวย) "
+                    "ใช้ id ต่อ session — เรารวมเป็น 1 row ต่อชื่อแล้วตั้ง game_id "
+                    "เป็น null (ไม่มี id เดียวที่ stable)",
     )
     game_name: str = Field(..., description="ชื่อเกม (ตามที่ provider ตั้งมา)")
     unique_players: int = Field(..., description="จำนวนคนเล่นไม่ซ้ำใน 30 วัน")
