@@ -17,7 +17,6 @@ log = logging.getLogger(__name__)
 def _build_payload(
     *,
     window_days: int,
-    games_per_provider: int,
     provider_rows: list[list[Any]],
     game_rows: list[list[Any]],
 ) -> dict[str, Any]:
@@ -39,14 +38,14 @@ def _build_payload(
         if not code:
             continue
         games = games_by_provider.get(code, [])
-        # Tiebreak by game_name then game_id asc so ordering is stable run-to-run
+        # Tiebreak by game_name then game_id asc so ordering is stable run-to-run.
+        # We always keep ALL games in the cache — the endpoint's
+        # ?games_per_provider=N param is the only place that trims the list.
         games.sort(key=lambda g: (
             -g["unique_players"],
             g["game_name"] or "",
             g["game_id"] or "",
         ))
-        if games_per_provider > 0:
-            games = games[:games_per_provider]
         for idx, g in enumerate(games, start=1):
             g["rank"] = idx
         providers.append({
@@ -90,7 +89,6 @@ def refresh_once(cfg: AppConfig, cache: HitsCache) -> dict[str, Any]:
 
     payload = _build_payload(
         window_days=cfg.window_days,
-        games_per_provider=cfg.games_per_provider,
         provider_rows=provider_rows,
         game_rows=game_rows,
     )

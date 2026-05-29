@@ -52,7 +52,6 @@ class AppConfig:
     window_days: int
     cron_hour: str
     cron_minute: str
-    games_per_provider: int
     cache_file: Path
     refresh_token: str | None
     access_code: str | None
@@ -83,9 +82,6 @@ def load_config() -> AppConfig:
         window_days=_env_int("HIT_WINDOW_DAYS", 30),
         cron_hour=_env("HIT_REFRESH_CRON_HOUR", "3"),
         cron_minute=_env("HIT_REFRESH_CRON_MINUTE", "5"),
-        # 0 = unlimited (cache stores every game per provider). The endpoint
-        # still lets callers ask for fewer via ?games_per_provider=N.
-        games_per_provider=_env_int("HIT_GAMES_PER_PROVIDER", 0),
         cache_file=cache_path,
         refresh_token=_env("REFRESH_TOKEN"),
         access_code=_env("ACCESS_CODE"),

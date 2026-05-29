@@ -127,7 +127,6 @@ provider ก็ได้ผ่าน `?games_per_provider=N` (เช่น PMTS 
 
 - `HIT_WINDOW_DAYS=30` — กี่วันย้อนหลัง (default หนึ่งเดือน)
 - `HIT_REFRESH_CRON_HOUR=3`, `HIT_REFRESH_CRON_MINUTE=5` — refresh วันละครั้งเวลา 03:05 UTC (เปลี่ยนเป็น `*` ถ้าอยากทุกชั่วโมง หรือ `*/6` ทุก 6 ชั่วโมง)
-- `HIT_GAMES_PER_PROVIDER=0` — เก็บเกมต่อ provider ไว้ใน cache สูงสุดกี่ตัว (default 0 = ทุกเกม)
 - `HIT_CACHE_FILE=data/hits.json` — ที่เก็บ cache บนดิสก์ (โหลดต่อเนื่องเวลา restart)
 - `ACCESS_CODE=` — รหัสเข้าใช้งาน `/games/hits` (ตั้งค่าจริงใน Railway Variables เท่านั้น) — ส่งผ่าน header `X-Access-Code` หรือ query `?code=` ถ้าไม่ตั้งจะเปิดให้ทุกคนเรียกได้
 - `REFRESH_TOKEN=` — shared secret ป้องกัน `/refresh` (ดูใน [SECURITY.md](SECURITY.md))
