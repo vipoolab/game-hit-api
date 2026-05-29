@@ -232,8 +232,8 @@ def get_hits(
         examples=[10],
     ),
     games_per_provider: int | None = Query(
-        None, ge=0, le=200,
-        description="คืนเกมต่อ provider แค่ N ตัว (default: ตามค่า cache, ปกติ 50)",
+        None, ge=0, le=2000,
+        description="คืนเกมต่อ provider แค่ N ตัว (default: ทั้งหมดที่อยู่ใน cache)",
         examples=[5],
     ),
     provider: str | None = Query(

@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any
 
 from .cache import HitsCache
@@ -13,14 +12,6 @@ from .queries import game_rollup_sql, provider_rollup_sql
 from .trino_client import run_query
 
 log = logging.getLogger(__name__)
-
-
-def _num(v: Any) -> float | int | None:
-    if v is None:
-        return None
-    if isinstance(v, Decimal):
-        return float(v)
-    return v
 
 
 def _build_payload(
@@ -32,22 +23,21 @@ def _build_payload(
 ) -> dict[str, Any]:
     # Index games by provider code
     games_by_provider: dict[str, list[dict[str, Any]]] = {}
-    for code, name, players, spins, bet in game_rows:
+    for code, name, players in game_rows:
         if not code:
             continue
         games_by_provider.setdefault(code, []).append({
             "game_name": name,
             "unique_players": int(players or 0),
-            "spins": int(spins or 0),
-            "bet_volume": _num(bet) or 0,
         })
 
     providers: list[dict[str, Any]] = []
-    for code, fullname, players, spins, bet in provider_rows:
+    for code, fullname, players in provider_rows:
         if not code:
             continue
         games = games_by_provider.get(code, [])
-        games.sort(key=lambda g: (-g["unique_players"], -g["spins"]))
+        # Tiebreak by game_name asc so ordering is stable run-to-run
+        games.sort(key=lambda g: (-g["unique_players"], g["game_name"] or ""))
         if games_per_provider > 0:
             games = games[:games_per_provider]
         for idx, g in enumerate(games, start=1):
@@ -56,13 +46,12 @@ def _build_payload(
             "provider_code": code,
             "provider_fullname": fullname or code,
             "unique_players": int(players or 0),
-            "spins": int(spins or 0),
-            "bet_volume": _num(bet) or 0,
             "game_count": len(games),
             "games": games,
         })
 
-    providers.sort(key=lambda p: (-p["unique_players"], -p["spins"]))
+    # Tiebreak by provider_code asc for stable ordering
+    providers.sort(key=lambda p: (-p["unique_players"], p["provider_code"]))
     for idx, p in enumerate(providers, start=1):
         p["rank"] = idx
 

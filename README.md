@@ -80,33 +80,29 @@ curl -X POST -H "X-Refresh-Token: $TOKEN" $URL/refresh
 
 ```json
 {
-  "refreshed_at": "2026-05-26T10:05:00+00:00",
+  "refreshed_at": "2026-05-29T03:05:00+00:00",
   "window_days": 30,
   "metric": "unique_players",
   "scope": "global",
-  "provider_count": 138,
+  "provider_count": 148,
   "providers": [
     {
       "rank": 1,
       "provider_code": "PGS",
       "provider_fullname": "Pgsoft Seamless",
-      "unique_players": 8152810,
-      "spins": 523133866,
-      "bet_volume": 137300213959.92,
-      "game_count": 50,
+      "unique_players": 8142412,
+      "game_count": 164,
       "games": [
-        {
-          "rank": 1,
-          "game_name": "treasures of aztec",
-          "unique_players": 1234567,
-          "spins": 21745484,
-          "bet_volume": 6691622.50
-        }
+        { "rank": 1, "game_name": "treasures of aztec", "unique_players": 4041133 },
+        { "rank": 2, "game_name": "mahjong ways 2",     "unique_players": 2465932 }
       ]
     }
   ]
 }
 ```
+
+Cache เก็บ **ทุกเกม** ที่ provider มี (ไม่มี cap) — request ขอกี่เกมต่อ
+provider ก็ได้ผ่าน `?games_per_provider=N` (เช่น PMTS มี 642 เกม)
 
 หน้าเว็บ render เพียงวน `providers` (อันดับเรียงให้แล้ว) แต่ละ provider
 แสดงชื่อด้วย `provider_fullname` แล้วโชว์ `games` ด้านล่างตามอันดับใน array.
@@ -117,7 +113,7 @@ curl -X POST -H "X-Refresh-Token: $TOKEN" $URL/refresh
 
 - `HIT_WINDOW_DAYS=30` — กี่วันย้อนหลัง (default หนึ่งเดือน)
 - `HIT_REFRESH_CRON_HOUR=3`, `HIT_REFRESH_CRON_MINUTE=5` — refresh วันละครั้งเวลา 03:05 UTC (เปลี่ยนเป็น `*` ถ้าอยากทุกชั่วโมง หรือ `*/6` ทุก 6 ชั่วโมง)
-- `HIT_GAMES_PER_PROVIDER=50` — เก็บเกมต่อ provider ไว้ใน cache สูงสุดกี่ตัว (0 = ทั้งหมด)
+- `HIT_GAMES_PER_PROVIDER=0` — เก็บเกมต่อ provider ไว้ใน cache สูงสุดกี่ตัว (default 0 = ทุกเกม)
 - `HIT_CACHE_FILE=data/hits.json` — ที่เก็บ cache บนดิสก์ (โหลดต่อเนื่องเวลา restart)
 - `ACCESS_CODE=` — รหัสเข้าใช้งาน `/games/hits` (ตั้งค่าจริงใน Railway Variables เท่านั้น) — ส่งผ่าน header `X-Access-Code` หรือ query `?code=` ถ้าไม่ตั้งจะเปิดให้ทุกคนเรียกได้
 - `REFRESH_TOKEN=` — shared secret ป้องกัน `/refresh` (ดูใน [SECURITY.md](SECURITY.md))
