@@ -93,13 +93,27 @@ curl -X POST -H "X-Refresh-Token: $TOKEN" $URL/refresh
       "unique_players": 8142412,
       "game_count": 164,
       "games": [
-        { "rank": 1, "game_name": "treasures of aztec", "unique_players": 4041133 },
-        { "rank": 2, "game_name": "mahjong ways 2",     "unique_players": 2465932 }
+        { "rank": 1, "game_id": "60531c5534d88c344ce9acbd", "game_name": "treasures of aztec", "unique_players": 4041133 },
+        { "rank": 2, "game_id": "60531c5534d88c344ce9acb2", "game_name": "mahjong ways 2",     "unique_players": 2465932 }
       ]
     }
   ]
 }
 ```
+
+Field reference:
+- `provider_code` — รหัส provider (ใช้เป็น provider_id ได้เลย เช่น `PGS`, `SAG`)
+- `provider_fullname` — ชื่อ provider แบบเต็มสำหรับ display
+- `game_id` — รหัสเกมจาก warehouse (24-hex ObjectId สำหรับ slot games)
+- `game_name` — ชื่อเกมสำหรับ display
+- `unique_players` — จำนวนคนเล่นไม่ซ้ำใน 30 วัน (= metric ของอันดับ)
+
+หมายเหตุ:
+- **Slot games** (PGS, PMTS, JL, ...): `game_id` map 1:1 กับ `game_name` — ใช้ map ได้ตรง
+- **Sport/Lottery** (Single Sport, Mix Parlay Step, AMBLOTTO): `game_id` เป็น
+  session ID ของแต่ละ match/round จะเห็นชื่อเดียวซ้ำหลาย row (เช่น
+  "football" มี ~7000 row ใน 30 วัน — แต่ละ row คือ 1 match) ถ้าไม่ต้อง
+  สนใจ sport ให้ filter ด้วย `?provider=PGS` หรือ skip provider เหล่านี้บน client
 
 Cache เก็บ **ทุกเกม** ที่ provider มี (ไม่มี cap) — request ขอกี่เกมต่อ
 provider ก็ได้ผ่าน `?games_per_provider=N` (เช่น PMTS มี 642 เกม)

@@ -21,12 +21,15 @@ def _build_payload(
     provider_rows: list[list[Any]],
     game_rows: list[list[Any]],
 ) -> dict[str, Any]:
-    # Index games by provider code
+    # Index games by provider code. Each row is (provider, game_id, game_name,
+    # unique_players) — for slot games game_id is the stable warehouse ID,
+    # for sport/lottery game_id is per-session.
     games_by_provider: dict[str, list[dict[str, Any]]] = {}
-    for code, name, players in game_rows:
+    for code, gid, name, players in game_rows:
         if not code:
             continue
         games_by_provider.setdefault(code, []).append({
+            "game_id": gid,
             "game_name": name,
             "unique_players": int(players or 0),
         })
@@ -36,8 +39,12 @@ def _build_payload(
         if not code:
             continue
         games = games_by_provider.get(code, [])
-        # Tiebreak by game_name asc so ordering is stable run-to-run
-        games.sort(key=lambda g: (-g["unique_players"], g["game_name"] or ""))
+        # Tiebreak by game_name then game_id asc so ordering is stable run-to-run
+        games.sort(key=lambda g: (
+            -g["unique_players"],
+            g["game_name"] or "",
+            g["game_id"] or "",
+        ))
         if games_per_provider > 0:
             games = games[:games_per_provider]
         for idx, g in enumerate(games, start=1):

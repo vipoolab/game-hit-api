@@ -8,6 +8,12 @@ from pydantic import BaseModel, Field
 
 class GameItem(BaseModel):
     rank: int = Field(..., description="อันดับของเกมภายใน provider นี้ (1 = ฮิตสุด)")
+    game_id: str | None = Field(
+        None,
+        description="รหัสเกมจาก warehouse (24-hex ObjectId) — slot games map 1:1 "
+                    "กับชื่อเกม สำหรับ sport/lottery game_id จะเป็นต่อ session "
+                    "(ชื่อเดียวจะมีหลาย game_id)",
+    )
     game_name: str = Field(..., description="ชื่อเกม (ตามที่ provider ตั้งมา)")
     unique_players: int = Field(..., description="จำนวนคนเล่นไม่ซ้ำใน 30 วัน")
 
@@ -49,9 +55,9 @@ class HitsResponse(BaseModel):
                         "unique_players": 8152810,
                         "game_count": 3,
                         "games": [
-                            {"rank": 1, "game_name": "treasures of aztec",   "unique_players": 4043719},
-                            {"rank": 2, "game_name": "mahjong ways 2",       "unique_players": 2467466},
-                            {"rank": 3, "game_name": "lucky neko",           "unique_players": 2146311},
+                            {"rank": 1, "game_id": "60531c5534d88c344ce9acbd", "game_name": "treasures of aztec", "unique_players": 4043719},
+                            {"rank": 2, "game_id": "60531c5534d88c344ce9acb2", "game_name": "mahjong ways 2",     "unique_players": 2467466},
+                            {"rank": 3, "game_id": "60531c5534d88c344ce9acc4", "game_name": "lucky neko",         "unique_players": 2146311},
                         ],
                     },
                     {
@@ -61,8 +67,8 @@ class HitsResponse(BaseModel):
                         "unique_players": 267226,
                         "game_count": 2,
                         "games": [
-                            {"rank": 1, "game_name": "baccarat",  "unique_players": 250307},
-                            {"rank": 2, "game_name": "thai hilo", "unique_players": 13505},
+                            {"rank": 1, "game_id": "5fa1c3...", "game_name": "baccarat",  "unique_players": 250307},
+                            {"rank": 2, "game_id": "5fa1c4...", "game_name": "thai hilo", "unique_players": 13505},
                         ],
                     },
                 ],
